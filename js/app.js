@@ -10,6 +10,8 @@ import { buildAssembly, HOLO_COLOR, setPartState } from './models.js';
 import {
   cloneModelState, computeState, partStatus, describeFailure, getModel
 } from './parts.js';
+import { ASSETS, getAsset, iconSvg } from './assets.js';
+import { CreatorLab } from './workbench.js';
 
 /* ================= DOM ================= */
 const viewport = document.getElementById('viewport');
@@ -23,6 +25,20 @@ const sysStateEl = document.getElementById('sys-state');
 const infoPopup = document.getElementById('info-popup');
 const quickActionsEl = document.getElementById('quick-actions');
 const legendEl = document.getElementById('legend');
+const workbenchEl = document.getElementById('workbench');
+const labResults = document.getElementById('lab-results');
+const panelHeaderLabel = document.querySelector('.panel-header > span');
+const modeTabs = document.querySelectorAll('[data-mode]');
+const catTabs = document.querySelectorAll('[data-cat]');
+const toolTabs = document.querySelectorAll('[data-tool]');
+const btnSimulate = document.getElementById('btn-simulate');
+const btnExample = document.getElementById('btn-example');
+const btnClear = document.getElementById('btn-clear');
+
+/* ================= CREATOR LAB ================= */
+const lab = new CreatorLab(workbenchEl);
+let currentCat = 'electronics';
+let selectedAsset = null;
 
 /* ================= 3D SCENE ================= */
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -258,6 +274,24 @@ function handleCommand(raw) {
 
   if (!text) return;
 
+  if (/(creator|workbench|builder|build circuit|drawing board)/.test(t)) {
+    setMode('creator');
+    return;
+  }
+
+  if (/(simulate|run sim|test circuit|does it work|will it work|run the sim)/.test(t)) {
+    if (document.body.dataset.mode !== 'creator') setMode('creator');
+    runCreatorSim();
+    return;
+  }
+
+  if (/(load example|example circuit|example project|show me a circuit)/.test(t)) {
+    setMode('creator');
+    lab.loadExample('working');
+    logSys('WORKING EXAMPLE LOADED — battery > resistor > LED circuit. Press SIMULATE.');
+    return;
+  }
+
   if (isModelCommand(t)) {
     if (state && built) {
       logSys('Model "' + getModel(modelId).name + '" is already loaded. Use "reset model" to rebuild from scratch.');
@@ -357,6 +391,9 @@ function showHelp() {
   log('inspect / explain <part> ............ learn how that part works', 'log-dim');
   log('show parts .......................... list component registry', 'log-dim');
   log('reset model ......................... restore all components', 'log-dim');
+  log('creator / workbench ................. open the Engineering Creator Lab', 'log-dim');
+  log('simulate / does it work ............. run the workbench circuit simulator', 'log-dim');
+  log('load example / build circuit ........ load a working example circuit', 'log-dim');
   log('roadmap / expand .................... future model domains', 'log-dim');
   log('parts: battery switch resistor capacitor diode transistor led ic mcu transformer speaker pcb', 'log-dim');
 }
@@ -528,6 +565,155 @@ function setupQuickActions() {
   }
 }
 
+/* ================= CREATOR LAB UI ================= */
+function setMode(mode) {
+  document.body.dataset.mode = mode;
+  renderer.domElement.hidden = mode === 'creator';
+  workbenchEl.hidden = mode !== 'creator';
+  labResults.hidden = true;
+  const hint = viewport.querySelector('.lab-hint');
+  if (hint) hint.style.display = mode === 'creator' ? '' : 'none';
+  for (const b of modeTabs) b.classList.toggle('active', b.dataset.mode === mode);
+  if (mode === 'creator') {
+    panelHeaderLabel.textContent = '◈ ASSET LIBRARY';
+    renderPalette(currentCat);
+    lab.render();
+  } else {
+    panelHeaderLabel.textContent = '◈ COMPONENT REGISTRY';
+    renderPanel();
+    requestAnimationFrame(() => {
+      camera.aspect = viewport.clientWidth / viewport.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+    });
+  }
+  logSys('MODE: ' + (mode === 'creator' ? 'CREATOR LAB — pick an asset, place it, wire pins, press SIMULATE' : 'HOLO VIEWER — click a part to inspect it'));
+}
+
+function renderPalette(cat) {
+  partListEl.innerHTML = '';
+  const items = Object.values(ASSETS).filter(a => a.cat === cat);
+  panelCount.textContent = items.length + ' ASSETS';
+  legendEl.innerHTML = '';
+  for (const a of items) {
+    const card = document.createElement('div');
+    card.className = 'asset-card' + (selectedAsset === a.id ? ' selected' : '');
+    const meta = a.cat === 'electronics'
+      ? (a.pins ? 'PINS: ' + a.pins.map(p => p.id).join(' · ') : 'NO PINS')
+      : (a.attr ? 'ATTR: ' + Object.keys(a.attr).join(' · ') : 'MECHANICAL');
+    card.innerHTML =
+      '<div class="asset-icon"><svg viewBox="0 0 48 48">' + iconSvg(a.icon) + '</svg></div>' +
+      '<div class="asset-meta">' +
+        '<div class="am-name">' + a.name + '</div>' +
+        '<div class="am-pins">' + meta + '</div>' +
+      '</div>';
+    card.addEventListener('click', () => {
+      selectedAsset = a.id;
+      renderPalette(cat);
+      showAssetInfo(a);
+      lab.setAsset(a.id);
+      logSys('ASSET SELECTED: ' + a.name + ' — now click the grid to place it.');
+    });
+    partListEl.appendChild(card);
+  }
+}
+
+function showAssetInfo(a) {
+  const box = document.createElement('div');
+  box.className = 'asset-info';
+  box.innerHTML =
+    '<div class="ai-name">' + a.name + '</div>' +
+    '<div class="ai-cat">' + a.cat.toUpperCase() +
+      (a.pins ? ' | PINS: ' + a.pins.map(p => p.id).join(' · ') : '') + '</div>' +
+    '<div class="ai-desc">' + a.desc + '</div>' +
+    '<div class="ai-spec"><strong style="color:var(--cyan)">HOW IT WORKS:</strong> ' + a.how + '</div>' +
+    '<div class="ai-spec" style="color:var(--amber)"><strong>FAILS WHEN:</strong> ' + a.fail + '</div>';
+  partListEl.prepend(box);
+}
+
+function runCreatorSim() {
+  if (!lab.components.length) {
+    logWarn('Workbench is empty — place some assets first.');
+    return;
+  }
+  const { results, counts, verdict } = lab.simulateNow();
+  const cls = counts.fail ? 'fail' : counts.warn ? 'warn' : 'ok';
+  logSys('SIMULATOR: ' + verdict);
+  for (const r of results) {
+    if (r.s === 'fail') logErr(r.comp.type.toUpperCase() + ': ' + r.m);
+    else if (r.s === 'warn') logWarn(r.comp.type.toUpperCase() + ': ' + r.m);
+    else logOk(r.comp.type.toUpperCase() + ': ' + r.m);
+  }
+  labResults.innerHTML = '';
+  const close = document.createElement('span');
+  close.className = 'lr-close';
+  close.textContent = 'X';
+  close.addEventListener('click', () => { labResults.hidden = true; });
+  const verdictDiv = document.createElement('div');
+  verdictDiv.className = 'lr-verdict ' + cls;
+  verdictDiv.textContent = verdict;
+  const countsDiv = document.createElement('div');
+  countsDiv.className = 'lr-counts';
+  countsDiv.textContent = counts.fail + ' FAIL · ' + counts.warn + ' WARN · ' + counts.ok + ' OK';
+  labResults.appendChild(close);
+  labResults.appendChild(verdictDiv);
+  labResults.appendChild(countsDiv);
+  for (const r of results) {
+    const row = document.createElement('div');
+    row.className = 'lr-row ' + r.s;
+    row.innerHTML = '<span class="lr-tag">' + r.s.toUpperCase() + '</span><span class="lr-name">' + r.comp.type.toUpperCase() + '</span><span class="lr-msg">' + r.m + '</span>';
+    labResults.appendChild(row);
+  }
+  labResults.hidden = false;
+  sysStateEl.textContent = counts.fail ? 'DEVICE FAULTY' : counts.warn ? 'PARTIAL FUNCTION' : 'OPERATIONAL';
+  setTimeout(() => { sysStateEl.textContent = 'ONLINE'; }, 3000);
+}
+
+function wireToolbar() {
+  for (const b of modeTabs) b.addEventListener('click', () => setMode(b.dataset.mode));
+  for (const b of catTabs) {
+    b.addEventListener('click', () => {
+      currentCat = b.dataset.cat;
+      for (const x of catTabs) x.classList.toggle('active', x === b);
+      selectedAsset = null;
+      renderPalette(currentCat);
+    });
+  }
+  for (const b of toolTabs) {
+    b.addEventListener('click', () => {
+      for (const x of toolTabs) x.classList.toggle('active', x === b);
+      lab.setTool(b.dataset.tool);
+      logSys('TOOL: ' + b.dataset.tool.toUpperCase() + ' — ' + lab._hintText());
+    });
+  }
+  btnSimulate.addEventListener('click', runCreatorSim);
+  btnExample.addEventListener('click', () => {
+    const order = ['working', 'broken', 'motor', 'mech'];
+    const idx = order.indexOf(lab.lastExample || 'working');
+    lab.lastExample = order[(idx + 1) % order.length];
+    const ex = lab.loadExample(lab.lastExample);
+    logSys('EXAMPLE LOADED: ' + lab.lastExample.toUpperCase() + ' — ' + ex.components + ' parts, ' + ex.wires + ' wires. Press SIMULATE.');
+  });
+  btnClear.addEventListener('click', () => {
+    lab.clear();
+    labResults.hidden = true;
+    logSys('WORKBENCH CLEARED.');
+  });
+  window.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (lab.pendingPin) {
+      lab.pendingPin = null;
+      lab.render();
+    } else if (document.body.dataset.mode === 'creator') {
+      selectedAsset = null;
+      lab.setAsset(null);
+      renderPalette(currentCat);
+      logSys('Selection cleared.');
+    }
+    labResults.hidden = true;
+  });
+}
+
 /* ================= EVENTS ================= */
 consoleForm.addEventListener('submit', e => {
   e.preventDefault();
@@ -560,10 +746,17 @@ function animate() {
 
 /* ================= BOOT ================= */
 function start() {
+  wireToolbar();
   setupQuickActions();
-  logSys('HOLO·LAB v1.0.0 — Interactive Modeling & Impact Analysis suite.');
+  logSys('HOLO·LAB v2.0.0 — Interactive Modeling, Impact Analysis & Engineering Creator Lab.');
   logSys('Awaiting command. Type "help" to see what I can do.');
   boot();
+  const m = location.hash.indexOf('creator') >= 0 ? 'creator' : 'viewer';
+  setMode(m);
+  if (m === 'creator') {
+    lab.loadExample('working');
+    runCreatorSim();
+  }
   animate();
 }
 

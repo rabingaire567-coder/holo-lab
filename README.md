@@ -2,7 +2,9 @@
 
 An Iron-Man-style **holographic 3D modeling environment** for electronics. Command the system in plain English to generate 3D holograms of electronic assemblies, inspect every component, see how it works, and simulate the impact of removing parts — all in a professional HUD interface.
 
-![theme](https://img.shields.io/badge/theme-hologram-00e5ff) ![stack](https://img.shields.io/badge/stack-Three.js-blue) ![status](https://img.shields.io/badge/status-live-green)
+Plus a full **Engineering Creator Lab**: design real devices on a schematic workbench from a 45-part electronics + mechanical library, wire the pins, and run a physics-based simulator that tells you if your build works — and why not.
+
+![theme](https://img.shields.io/badge/theme-hologram-00e5ff) ![stack](https://img.shields.io/badge/stack-Three.js-blue) ![sim](https://img.shields.io/badge/sim-circuit+mech-3dff88) ![status](https://img.shields.io/badge/status-live-green)
 
 ---
 
@@ -15,6 +17,10 @@ An Iron-Man-style **holographic 3D modeling environment** for electronics. Comma
 | 📦 **Component registry** | 12 electronics parts with *function*, *mechanism*, and *removal impact* for each |
 | ⚠️ **Impact engine** | Remove a part → dependent components degrade (NO POWER, BURNED OUT, FLICKER…) |
 | 🧪 **Dry-run simulation** | `what if i remove <part>` previews the cascade before you apply it |
+| ✧ **Engineering Creator Lab** | Schematic workbench: place components, wire pins, run a real circuit + mechanical simulator |
+| 🧰 **45-asset library** | 25 electronics (LED, MCU, servo, transformer…) + 20 mechanical (gears, shafts, belts…) with SVG icons and pins |
+| ⚙ **Circuit simulator** | Detects shorts, reversed polarity, missing current limiters, open switches — verdicts per component |
+| 🔩 **Mechanical simulator** | Gear mesh + ratios, belt/pulley, shaft/bearing, spring force, bolt torque and more |
 | 🏗 **Expandable** | Data-driven `MODELS` registry — add robotics / housing / mechanical domains without touching the 3D engine |
 
 ## 🔌 Quick start
@@ -59,6 +65,9 @@ what if i remove <part>       dry-run impact simulation
 inspect / explain <part>      learn how that part works
 show parts                    list the component registry
 reset model                   restore all components
+creator / workbench           open the Engineering Creator Lab
+simulate / does it work       run the workbench simulator
+load example                  load a working example circuit
 roadmap / expand              future model domains
 help                          show command reference
 ```
@@ -92,6 +101,27 @@ Each part defines `affected: [{ part, mode }]` (see `js/parts.js`). The engine c
 - `remove transistor` → `LED → NO CONTROL SIGNAL` (stuck off)
 
 `js/models.js` visualizes it: removed parts **vanish**, degraded parts **glow amber**, active parts **glow cyan**.
+
+## ⚙ Engineering Creator Lab
+
+Click **CREATOR LAB** in the toolbar (or type `creator`), or deep-link straight into it with `#creator` on the URL.
+
+1. **Pick an asset** from the right-panel library — switch between ⚡ ELECTRONICS and ⚙ MECHANICAL tabs.
+2. **PLACE** — select a tool, then click the grid. Electronics carry labeled pins (`+`, `-`, `A`, `K`…).
+3. **WIRE** — click pin A then pin B to connect (open circuits fail to simulate).
+4. **SIMULATE** — every component gets a verdict (OK / WARN / FAIL) and the device gets an overall verdict:
+   - ⚡ electronics: shorts, reversed polarity, missing current limiters (LED burn-out!), open switches, unpowered ICs
+   - ⚙ mechanical: gear mesh distance + ratio, belt wrap, shaft-in-bearing alignment, spring force, bolt-on-chassis
+5. **EXAMPLE** — cycles battery→resistor→LED (working), the no-resistor burn-out (broken), a motor, and a gear/belt mechanical assembly.
+
+Tools: `PLACE · WIRE · MOVE · ROTATE · DELETE` — double-click a switch to open/close it. `ESC` cancels a wire or selection.
+
+### Simulator architecture (`js/simulator.js`)
+
+- Union-find builds electrical **nets** from wires; open switches and unpowered paths break continuity
+- Per-component **pin polarity** — power/ground are resolved through the rest of the circuit, so a powered loop can't mark both pins as both
+- Current-limiting detection (`pathHasLimiter`) finds a resistor/potentiometer/LDR between the battery and each load
+- Mechanical validators check geometry (`pinWorld` in cell units), e.g. gear centers within mesh distance → reports ratio and speed/torque multiplier
 
 ## 🏗 Expanding to new model domains
 
@@ -139,19 +169,23 @@ function buildServo() { /* cylinder + shaft hologram */ }
 
 ```
 holo-lab/
-├── index.html        # HUD layout + Three.js importmap
+├── index.html        # HUD layout + Three.js importmap + toolbar
 ├── css/
-│   └── style.css     # holographic HUD theme
+│   └── style.css     # holographic HUD theme + creator-lab styles
 └── js/
-    ├── app.js        # scene, commands, console, panel, raycast
+    ├── app.js        # scene, commands, console, panel, raycast, mode switcher
     ├── models.js     # 3D geometry builders + state colors
-    └── parts.js      # component registry + impact engine
+    ├── parts.js      # component registry + impact engine
+    ├── assets.js     # 45-part creator-lab asset library (icons, pins, info)
+    ├── simulator.js  # circuit + mechanical simulator engine
+    └── workbench.js  # SVG creator-lab workbench (place/wire/move/rotate/delete)
 ```
 
 ## 🛠 Tech
 
 - [Three.js r160](https://threejs.org) — WebGL 3D rendering
 - Vanilla JS (ES modules) — no build step
+- SVG + CSS — hologram-styled creator workbench
 - Orbitron / Share Tech Mono — sci-fi type
 
 ## 🧪 Testing
@@ -160,4 +194,7 @@ Logic is verifiable headlessly:
 
 ```bash
 node --check js/app.js && node --check js/models.js && node --check js/parts.js
+node --check js/assets.js && node --check js/simulator.js && node --check js/workbench.js
 ```
+
+The simulator is importable in Node (`import { simulate } from './js/simulator.js'`) — feed it `{id, type, x, y, rot, extra}` components and `{a, b}` wires to verify shorts, polarity, and gear-mesh logic headlessly.

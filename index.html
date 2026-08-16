@@ -27,6 +27,29 @@
     </div>
   </header>
 
+  <nav class="toolbar" id="toolbar">
+    <div class="tb-group" id="mode-tabs">
+      <button class="tb-btn active" data-mode="viewer">◉ HOLO VIEWER</button>
+      <button class="tb-btn" data-mode="creator">✧ CREATOR LAB</button>
+    </div>
+    <div class="tb-group creator-only" id="cat-tabs">
+      <button class="tb-btn active" data-cat="electronics">⚡ ELECTRONICS</button>
+      <button class="tb-btn" data-cat="mechanical">⚙ MECHANICAL</button>
+    </div>
+    <div class="tb-group creator-only" id="tool-tabs">
+      <button class="tb-btn active" data-tool="place">PLACE</button>
+      <button class="tb-btn" data-tool="wire">WIRE</button>
+      <button class="tb-btn" data-tool="move">MOVE</button>
+      <button class="tb-btn" data-tool="rotate">ROTATE</button>
+      <button class="tb-btn" data-tool="delete">DELETE</button>
+    </div>
+    <div class="tb-group creator-only" id="action-btns">
+      <button class="tb-btn accent" id="btn-simulate">▶ SIMULATE</button>
+      <button class="tb-btn" id="btn-example">EXAMPLE</button>
+      <button class="tb-btn" id="btn-clear">CLEAR</button>
+    </div>
+  </nav>
+
   <main class="stage">
     <section id="viewport" class="viewport">
       <div class="viewport-hud">
@@ -35,6 +58,8 @@
       </div>
       <div id="info-popup" class="info-popup" hidden></div>
       <div id="quick-actions" class="quick-actions"></div>
+      <svg id="workbench" class="workbench" hidden></svg>
+      <div id="lab-results" class="lab-results" hidden></div>
     </section>
 
     <aside class="panel" id="parts-panel">
