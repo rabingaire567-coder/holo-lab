@@ -12,6 +12,7 @@ import {
 } from './parts.js';
 import { ASSETS, getAsset, iconSvg } from './assets.js';
 import { CreatorLab } from './workbench.js';
+import { DesignStudio } from './studio.js';
 
 /* ================= DOM ================= */
 const viewport = document.getElementById('viewport');
@@ -27,18 +28,27 @@ const quickActionsEl = document.getElementById('quick-actions');
 const legendEl = document.getElementById('legend');
 const workbenchEl = document.getElementById('workbench');
 const labResults = document.getElementById('lab-results');
-const panelHeaderLabel = document.querySelector('.panel-header > span');
+const panelTitleEl = document.getElementById('panel-title');
+const panelTabsEl = document.getElementById('panel-tabs');
+const ptabBtns = document.querySelectorAll('[data-ptab]');
 const modeTabs = document.querySelectorAll('[data-mode]');
 const catTabs = document.querySelectorAll('[data-cat]');
 const toolTabs = document.querySelectorAll('[data-tool]');
 const btnSimulate = document.getElementById('btn-simulate');
 const btnExample = document.getElementById('btn-example');
 const btnClear = document.getElementById('btn-clear');
+const btnSnap = document.getElementById('btn-snap');
+const btnSnap1 = document.getElementById('btn-snap1');
+const btnSnap05 = document.getElementById('btn-snap05');
+const studioHint = document.getElementById('studio-hint');
+const studioBtns = document.querySelectorAll('[data-studio-tool]');
+const btnStDesc = document.getElementById('btn-st-desc');
 
 /* ================= CREATOR LAB ================= */
 const lab = new CreatorLab(workbenchEl);
 let currentCat = 'electronics';
 let selectedAsset = null;
+let currentPtab = 'assets';
 
 /* ================= 3D SCENE ================= */
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -60,11 +70,25 @@ controls.maxPolarAngle = Math.PI * 0.55;
 controls.minDistance = 6;
 controls.maxDistance = 45;
 
+const VIEWER_MOUSE = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+const STUDIO_MOUSE = { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
+
 /* grid floor */
 const grid = new THREE.GridHelper(40, 40, 0x00e5ff, 0x0a4a5e);
 grid.material.transparent = true;
 grid.material.opacity = 0.18;
 scene.add(grid);
+
+const studio = new DesignStudio({ scene, canvas: renderer.domElement, camera, grid });
+studio.callbacks.onSelect = sel => {
+  if (currentPtab === 'props' && document.body.dataset.mode === 'studio') renderProperties();
+  if (sel) logSys('SELECTED: ' + sel.name + ' (' + sel.type + ')');
+};
+studio.callbacks.onChange = () => {
+  if (currentPtab === 'outliner' && document.body.dataset.mode === 'studio') renderOutliner();
+  if (currentPtab === 'props' && document.body.dataset.mode === 'studio' && studio.selected) renderProperties();
+};
+studio.callbacks.onLog = (m, cls) => cls === 'sys' ? logSys(m) : log(m, 'log-dim');
 
 /* floating particles */
 const pGeo = new THREE.BufferGeometry();
@@ -279,9 +303,15 @@ function handleCommand(raw) {
     return;
   }
 
+  if (/(3d design studio|design studio|studio|blender|3d editor|3d workbench|design mode)/.test(t)) {
+    setMode('studio');
+    return;
+  }
+
   if (/(simulate|run sim|test circuit|does it work|will it work|run the sim)/.test(t)) {
-    if (document.body.dataset.mode !== 'creator') setMode('creator');
-    runCreatorSim();
+    if (document.body.dataset.mode === 'creator') runCreatorSim();
+    else if (document.body.dataset.mode === 'studio') runStudioSim();
+    else { setMode('creator'); runCreatorSim(); }
     return;
   }
 
@@ -392,7 +422,8 @@ function showHelp() {
   log('show parts .......................... list component registry', 'log-dim');
   log('reset model ......................... restore all components', 'log-dim');
   log('creator / workbench ................. open the Engineering Creator Lab', 'log-dim');
-  log('simulate / does it work ............. run the workbench circuit simulator', 'log-dim');
+  log('studio / 3d design studio ........... open the Blender-style 3D editor', 'log-dim');
+  log('simulate / does it work ............. run the workbench/studio simulator', 'log-dim');
   log('load example / build circuit ........ load a working example circuit', 'log-dim');
   log('roadmap / expand .................... future model domains', 'log-dim');
   log('parts: battery switch resistor capacitor diode transistor led ic mcu transformer speaker pcb', 'log-dim');
@@ -524,6 +555,7 @@ function updatePointer(event) {
 }
 
 renderer.domElement.addEventListener('click', event => {
+  if (document.body.dataset.mode === 'studio') return;
   if (event.target !== renderer.domElement) return;
   updatePointer(event);
   raycaster.setFromCamera(pointer, camera);
@@ -538,6 +570,7 @@ renderer.domElement.addEventListener('click', event => {
 });
 
 renderer.domElement.addEventListener('mousemove', event => {
+  if (document.body.dataset.mode === 'studio') return;
   updatePointer(event);
   raycaster.setFromCamera(pointer, camera);
   const hits = raycaster.intersectObject(assemblyGroup, true);
@@ -565,7 +598,13 @@ function setupQuickActions() {
   }
 }
 
-/* ================= CREATOR LAB UI ================= */
+/* ================= CREATOR LAB / STUDIO UI ================= */
+const MODE_LABEL = {
+  viewer: '◈ COMPONENT REGISTRY',
+  creator: '◈ ASSET LIBRARY',
+  studio: '◈ DESIGN STUDIO'
+};
+
 function setMode(mode) {
   document.body.dataset.mode = mode;
   renderer.domElement.hidden = mode === 'creator';
@@ -574,12 +613,22 @@ function setMode(mode) {
   const hint = viewport.querySelector('.lab-hint');
   if (hint) hint.style.display = mode === 'creator' ? '' : 'none';
   for (const b of modeTabs) b.classList.toggle('active', b.dataset.mode === mode);
+
+  if (mode === 'studio') studio.enter(); else studio.exit();
+  controls.mouseButtons = mode === 'studio' ? STUDIO_MOUSE : VIEWER_MOUSE;
+
+  panelTabsEl.hidden = mode !== 'studio';
+  panelTitleEl.textContent = MODE_LABEL[mode];
+
   if (mode === 'creator') {
-    panelHeaderLabel.textContent = '◈ ASSET LIBRARY';
     renderPalette(currentCat);
     lab.render();
+  } else if (mode === 'studio') {
+    currentPtab = 'assets';
+    for (const b of ptabBtns) b.classList.toggle('active', b.dataset.ptab === 'assets');
+    renderStudioTab();
+    studioHint.textContent = studioHintText();
   } else {
-    panelHeaderLabel.textContent = '◈ COMPONENT REGISTRY';
     renderPanel();
     requestAnimationFrame(() => {
       camera.aspect = viewport.clientWidth / viewport.clientHeight;
@@ -587,7 +636,24 @@ function setMode(mode) {
       renderer.setSize(viewport.clientWidth, viewport.clientHeight);
     });
   }
-  logSys('MODE: ' + (mode === 'creator' ? 'CREATOR LAB — pick an asset, place it, wire pins, press SIMULATE' : 'HOLO VIEWER — click a part to inspect it'));
+  const modeMsg = {
+    viewer: 'HOLO VIEWER — click a part to inspect it',
+    creator: 'CREATOR LAB — pick an asset, place it, wire pins, press SIMULATE',
+    studio: '3D DESIGN STUDIO — pick an asset, PLACE it, then MOVE / ROTATE / SCALE / WIRE — orbit with MIDDLE mouse'
+  }[mode];
+  logSys('MODE: ' + modeMsg);
+}
+
+function studioHintText() {
+  switch (studio.tool) {
+    case 'place': return 'PLACE — ' + (studio.assetId ? 'click the grid to drop ' + getAsset(studio.assetId).name : 'pick an asset from the library first');
+    case 'wire': return 'WIRE — click pin A, then click pin B to connect';
+    case 'move': return 'MOVE — drag the object (snaps to grid when SNAP is on)';
+    case 'rotate': return 'ROTATE — drag to spin around Y (15° snap when on)';
+    case 'scale': return 'SCALE — drag to resize (0.1 snap when on)';
+    case 'delete': return 'DELETE — click an object or wire to remove it';
+    default: return 'SELECT — left-click an object · orbit with MIDDLE mouse · scroll to zoom';
+  }
 }
 
 function renderPalette(cat) {
@@ -611,8 +677,13 @@ function renderPalette(cat) {
       selectedAsset = a.id;
       renderPalette(cat);
       showAssetInfo(a);
-      lab.setAsset(a.id);
-      logSys('ASSET SELECTED: ' + a.name + ' — now click the grid to place it.');
+      if (document.body.dataset.mode === 'studio') {
+        studio.setAsset(a.id);
+        studioHint.textContent = studioHintText();
+      } else {
+        lab.setAsset(a.id);
+      }
+      logSys('ASSET SELECTED: ' + a.name + ' — click the grid/workplane to place it.');
     });
     partListEl.appendChild(card);
   }
@@ -631,12 +702,8 @@ function showAssetInfo(a) {
   partListEl.prepend(box);
 }
 
-function runCreatorSim() {
-  if (!lab.components.length) {
-    logWarn('Workbench is empty — place some assets first.');
-    return;
-  }
-  const { results, counts, verdict } = lab.simulateNow();
+/* ---------- simulation results (shared by creator lab + studio) ---------- */
+function showSimResults({ results, counts, verdict }) {
   const cls = counts.fail ? 'fail' : counts.warn ? 'warn' : 'ok';
   logSys('SIMULATOR: ' + verdict);
   for (const r of results) {
@@ -669,6 +736,92 @@ function runCreatorSim() {
   setTimeout(() => { sysStateEl.textContent = 'ONLINE'; }, 3000);
 }
 
+function runCreatorSim() {
+  if (!lab.components.length) { logWarn('Workbench is empty — place some assets first.'); return; }
+  showSimResults(lab.simulateNow());
+}
+function runStudioSim() {
+  if (!studio.objects.length) { logWarn('Studio scene is empty — place some assets first.'); return; }
+  showSimResults(studio.simulateNow());
+}
+
+/* ---------- studio panel tabs ---------- */
+function renderStudioTab() {
+  if (currentPtab === 'assets') renderPalette(currentCat);
+  else if (currentPtab === 'outliner') renderOutliner();
+  else renderProperties();
+}
+
+function renderOutliner() {
+  partListEl.innerHTML = '';
+  panelCount.textContent = studio.objects.length + ' OBJECTS';
+  legendEl.innerHTML = '';
+  if (!studio.objects.length) {
+    partListEl.innerHTML = '<div class="outline-empty">No objects placed yet. Pick an asset and use PLACE.</div>';
+    return;
+  }
+  for (const o of studio.objects) {
+    const row = document.createElement('div');
+    row.className = 'outline-row' + (studio.selected && studio.selected.id === o.id ? ' sel' : '');
+    row.innerHTML =
+      '<span class="o-dot" style="background:#' + o.color.toString(16).padStart(6, '0') + '"></span>' +
+      '<span class="o-name">' + o.label + '</span>' +
+      '<span class="o-type">' + o.type.toUpperCase() + '</span>' +
+      '<span class="o-del">✕</span>';
+    row.addEventListener('click', () => studio.select(o.id));
+    row.querySelector('.o-del').addEventListener('click', ev => { ev.stopPropagation(); studio.removeObject(o.id); });
+    partListEl.appendChild(row);
+  }
+}
+
+function renderProperties() {
+  partListEl.innerHTML = '';
+  panelCount.textContent = '';
+  legendEl.innerHTML = '';
+  const o = studio.selected;
+  if (!o) {
+    partListEl.innerHTML = '<div class="props-empty">Select an object in the viewport or the OUTLINER tab to edit its properties.</div>';
+    return;
+  }
+  const a = getAsset(o.type);
+  partListEl.innerHTML =
+    '<div class="props-box">' +
+      '<div class="prop-group"><div class="prop-title">OBJECT · ' + o.name + '</div>' +
+        '<div class="prop-row"><label>POS X</label><input type="number" step="0.5" id="pr-x" value="' + o.pos.x + '"></div>' +
+        '<div class="prop-row"><label>POS Z</label><input type="number" step="0.5" id="pr-z" value="' + o.pos.z + '"></div>' +
+        '<div class="prop-row"><label>POS Y</label><input type="number" step="0.25" id="pr-y" value="' + o.pos.y + '"></div>' +
+        '<div class="prop-row"><label>ROT X</label><input type="number" step="15" id="pr-rx" value="' + o.rot.x + '"></div>' +
+        '<div class="prop-row"><label>ROT Y</label><input type="number" step="15" id="pr-ry" value="' + o.rot.y + '"></div>' +
+        '<div class="prop-row"><label>ROT Z</label><input type="number" step="15" id="pr-rz" value="' + o.rot.z + '"></div>' +
+        '<div class="prop-row"><label>SCALE</label><input type="number" step="0.1" id="pr-s" value="' + o.scale + '"></div>' +
+      '</div>' +
+      '<div class="prop-group"><div class="prop-title">APPEARANCE</div>' +
+        '<div class="prop-row"><label>COLOR</label><input type="color" id="pr-color" value="#' + o.color.toString(16).padStart(6, '0') + '"></div>' +
+        '<div class="prop-row"><label>OPACITY</label><input type="range" id="pr-op" min="0.15" max="1" step="0.05" value="' + o.opacity + '"></div>' +
+        '<div class="prop-row"><label>LABEL</label><input type="text" id="pr-label" value="' + o.label + '"></div>' +
+        '<div class="prop-buttons"><button id="pr-reset">RESET COLOR</button></div>' +
+      '</div>' +
+      '<div class="prop-group"><div class="prop-title">DOCUMENTATION</div>' +
+        '<div class="asset-info" style="margin:0"><div class="ai-desc">' + a.desc + '</div>' +
+        '<div class="ai-spec"><strong style="color:var(--cyan)">HOW:</strong> ' + a.how + '</div>' +
+        '<div class="ai-spec" style="color:var(--amber)"><strong>FAILS WHEN:</strong> ' + a.fail + '</div></div>' +
+      '</div>' +
+    '</div>';
+  const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('input', fn); };
+  bind('pr-x', e => { o.pos.x = parseFloat(e.target.value) || 0; studio.applyTransform(o); });
+  bind('pr-z', e => { o.pos.z = parseFloat(e.target.value) || 0; studio.applyTransform(o); });
+  bind('pr-y', e => { o.pos.y = parseFloat(e.target.value) || 0; studio.applyTransform(o); });
+  bind('pr-rx', e => { o.rot.x = parseFloat(e.target.value) || 0; studio.applyTransform(o); });
+  bind('pr-ry', e => { o.rot.y = parseFloat(e.target.value) || 0; studio.applyTransform(o); });
+  bind('pr-rz', e => { o.rot.z = parseFloat(e.target.value) || 0; studio.applyTransform(o); });
+  bind('pr-s', e => { o.scale = Math.max(0.1, parseFloat(e.target.value) || 1); studio.applyTransform(o); });
+  bind('pr-color', e => studio.setColor(o, e.target.value));
+  bind('pr-op', e => studio.setOpacity(o, parseFloat(e.target.value)));
+  bind('pr-label', e => studio.setLabel(o, e.target.value || o.name));
+  const reset = document.getElementById('pr-reset');
+  if (reset) reset.addEventListener('click', () => studio.setColor(o, o.cat === 'mechanical' ? '#ffb300' : '#00e5ff'));
+}
+
 function wireToolbar() {
   for (const b of modeTabs) b.addEventListener('click', () => setMode(b.dataset.mode));
   for (const b of catTabs) {
@@ -677,6 +830,7 @@ function wireToolbar() {
       for (const x of catTabs) x.classList.toggle('active', x === b);
       selectedAsset = null;
       renderPalette(currentCat);
+      if (document.body.dataset.mode === 'studio') studioHint.textContent = studioHintText();
     });
   }
   for (const b of toolTabs) {
@@ -686,29 +840,69 @@ function wireToolbar() {
       logSys('TOOL: ' + b.dataset.tool.toUpperCase() + ' — ' + lab._hintText());
     });
   }
-  btnSimulate.addEventListener('click', runCreatorSim);
+  for (const b of studioBtns) {
+    b.addEventListener('click', () => {
+      for (const x of studioBtns) x.classList.toggle('active', x === b);
+      studio.setTool(b.dataset.studioTool);
+      studioHint.textContent = studioHintText();
+      logSys('STUDIO TOOL: ' + b.dataset.studioTool.toUpperCase());
+    });
+  }
+  btnSnap.addEventListener('click', () => {
+    studio.setSnap(!studio.snap, studio.snapSize);
+    btnSnap.textContent = studio.snap ? 'SNAP ON' : 'SNAP OFF';
+    btnSnap.classList.toggle('active', studio.snap);
+    logSys('GRID SNAP: ' + (studio.snap ? 'ON (' + studio.snapSize + ')' : 'OFF'));
+  });
+  const setSnapSize = (v, btn) => {
+    studio.setSnap(studio.snap, v);
+    for (const b of [btnSnap1, btnSnap05]) b.classList.toggle('active', b === btn);
+    logSys('SNAP SIZE: ' + v);
+  };
+  btnSnap1.addEventListener('click', () => setSnapSize(1, btnSnap1));
+  btnSnap05.addEventListener('click', () => setSnapSize(0.5, btnSnap05));
+  btnStDesc.addEventListener('click', () => {
+    if (studio.selected) showAssetInfo(getAsset(studio.selected.type));
+    else logWarn('Select an object first.');
+  });
+  for (const b of ptabBtns) {
+    b.addEventListener('click', () => {
+      currentPtab = b.dataset.ptab;
+      for (const x of ptabBtns) x.classList.toggle('active', x === b);
+      renderStudioTab();
+    });
+  }
+  btnSimulate.addEventListener('click', () => {
+    if (document.body.dataset.mode === 'studio') runStudioSim(); else runCreatorSim();
+  });
   btnExample.addEventListener('click', () => {
     const order = ['working', 'broken', 'motor', 'mech'];
-    const idx = order.indexOf(lab.lastExample || 'working');
-    lab.lastExample = order[(idx + 1) % order.length];
-    const ex = lab.loadExample(lab.lastExample);
-    logSys('EXAMPLE LOADED: ' + lab.lastExample.toUpperCase() + ' — ' + ex.components + ' parts, ' + ex.wires + ' wires. Press SIMULATE.');
+    if (document.body.dataset.mode === 'studio') {
+      const idx = order.indexOf(studio.lastExample || 'working');
+      studio.lastExample = order[(idx + 1) % order.length];
+      const ex = studio.loadExample(studio.lastExample);
+      logSys('EXAMPLE LOADED: ' + studio.lastExample.toUpperCase() + ' — ' + ex.components + ' parts, ' + ex.wires + ' wires. Press SIMULATE.');
+    } else {
+      const idx = order.indexOf(lab.lastExample || 'working');
+      lab.lastExample = order[(idx + 1) % order.length];
+      const ex = lab.loadExample(lab.lastExample);
+      logSys('EXAMPLE LOADED: ' + lab.lastExample.toUpperCase() + ' — ' + ex.components + ' parts, ' + ex.wires + ' wires. Press SIMULATE.');
+    }
   });
   btnClear.addEventListener('click', () => {
-    lab.clear();
+    if (document.body.dataset.mode === 'studio') { studio.clear(); logSys('STUDIO SCENE CLEARED.'); }
+    else { lab.clear(); logSys('WORKBENCH CLEARED.'); }
     labResults.hidden = true;
-    logSys('WORKBENCH CLEARED.');
   });
   window.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (lab.pendingPin) {
-      lab.pendingPin = null;
-      lab.render();
-    } else if (document.body.dataset.mode === 'creator') {
-      selectedAsset = null;
-      lab.setAsset(null);
-      renderPalette(currentCat);
-      logSys('Selection cleared.');
+    if (document.body.dataset.mode === 'studio') {
+      if (studio.pendingWire) { studio.pendingWire = null; logSys('Wire selection cleared.'); }
+      else if (studio.assetId) { studio.setAsset(null); selectedAsset = null; if (currentPtab === 'assets') renderPalette(currentCat); }
+      else if (studio.selected) studio.select(null);
+    } else {
+      if (lab.pendingPin) { lab.pendingPin = null; lab.render(); }
+      else if (document.body.dataset.mode === 'creator') { selectedAsset = null; lab.setAsset(null); renderPalette(currentCat); logSys('Selection cleared.'); }
     }
     labResults.hidden = true;
   });
@@ -751,11 +945,15 @@ function start() {
   logSys('HOLO·LAB v2.0.0 — Interactive Modeling, Impact Analysis & Engineering Creator Lab.');
   logSys('Awaiting command. Type "help" to see what I can do.');
   boot();
-  const m = location.hash.indexOf('creator') >= 0 ? 'creator' : 'viewer';
+  const m = location.hash.indexOf('studio') >= 0 ? 'studio'
+    : location.hash.indexOf('creator') >= 0 ? 'creator' : 'viewer';
   setMode(m);
   if (m === 'creator') {
     lab.loadExample('working');
     runCreatorSim();
+  } else if (m === 'studio') {
+    studio.loadExample('working');
+    runStudioSim();
   }
   animate();
 }

@@ -4,6 +4,8 @@ An Iron-Man-style **holographic 3D modeling environment** for electronics. Comma
 
 Plus a full **Engineering Creator Lab**: design real devices on a schematic workbench from a 45-part electronics + mechanical library, wire the pins, and run a physics-based simulator that tells you if your build works — and why not.
 
+And a **3D Design Studio**: a Blender-style editor where you place those same 45 assets in a 3D viewport, transform them with snapping, wire pins in 3D, customize appearance, edit exact values in a numeric properties panel, manage objects in an outliner — and run the same simulator on the finished build.
+
 ![theme](https://img.shields.io/badge/theme-hologram-00e5ff) ![stack](https://img.shields.io/badge/stack-Three.js-blue) ![sim](https://img.shields.io/badge/sim-circuit+mech-3dff88) ![status](https://img.shields.io/badge/status-live-green)
 
 ---
@@ -18,6 +20,7 @@ Plus a full **Engineering Creator Lab**: design real devices on a schematic work
 | ⚠️ **Impact engine** | Remove a part → dependent components degrade (NO POWER, BURNED OUT, FLICKER…) |
 | 🧪 **Dry-run simulation** | `what if i remove <part>` previews the cascade before you apply it |
 | ✧ **Engineering Creator Lab** | Schematic workbench: place components, wire pins, run a real circuit + mechanical simulator |
+| 🎨 **3D Design Studio** | Blender-style 3D editor: transform tools with snap, 3D pin wiring, numeric properties, object outliner |
 | 🧰 **45-asset library** | 25 electronics (LED, MCU, servo, transformer…) + 20 mechanical (gears, shafts, belts…) with SVG icons and pins |
 | ⚙ **Circuit simulator** | Detects shorts, reversed polarity, missing current limiters, open switches — verdicts per component |
 | 🔩 **Mechanical simulator** | Gear mesh + ratios, belt/pulley, shaft/bearing, spring force, bolt torque and more |
@@ -66,7 +69,8 @@ inspect / explain <part>      learn how that part works
 show parts                    list the component registry
 reset model                   restore all components
 creator / workbench           open the Engineering Creator Lab
-simulate / does it work       run the workbench simulator
+studio / 3d design studio     open the Blender-style 3D editor
+simulate / does it work       run the workbench/studio simulator
 load example                  load a working example circuit
 roadmap / expand              future model domains
 help                          show command reference
@@ -115,6 +119,19 @@ Click **CREATOR LAB** in the toolbar (or type `creator`), or deep-link straight 
 5. **EXAMPLE** — cycles battery→resistor→LED (working), the no-resistor burn-out (broken), a motor, and a gear/belt mechanical assembly.
 
 Tools: `PLACE · WIRE · MOVE · ROTATE · DELETE` — double-click a switch to open/close it. `ESC` cancels a wire or selection.
+
+## 🎨 3D Design Studio
+
+Click **STUDIO** in the toolbar (or type `studio`), or deep-link with `#studio` on the URL. It's a Blender-style editor for the same 45-asset library:
+
+1. **ASSETS panel** — pick a part from the electronics / mechanical library; it becomes the active *place* brush.
+2. **Rail tools** — `SELECT · PLACE · MOVE · ROTATE · SCALE · WIRE · DELETE` (Blender shortcuts: `W/E/R/S` for move/rotate/scale). Snap toggles 1 / 0.5 / off.
+3. **Outliner** — every object in the scene, click to select, shows live counts.
+4. **Properties** — exact numeric position (X/Z), rotation (Y), scale, color, opacity, and label for the selected object.
+5. **WIRE** — click two pins (they light up when hovered) to draw a 3D connection.
+6. **SIMULATE** — the same engine maps the 3D layout down to the schematic grid and reports every component verdict.
+
+Orbit with the **middle mouse** (Blender-style), zoom with the wheel, pan with the right mouse. Examples cycle: working LED circuit → burn-out (broken) → motor → gear/belt mechanical assembly.
 
 ### Simulator architecture (`js/simulator.js`)
 
@@ -178,7 +195,8 @@ holo-lab/
     ├── parts.js      # component registry + impact engine
     ├── assets.js     # 45-part creator-lab asset library (icons, pins, info)
     ├── simulator.js  # circuit + mechanical simulator engine
-    └── workbench.js  # SVG creator-lab workbench (place/wire/move/rotate/delete)
+    ├── workbench.js  # SVG creator-lab workbench (place/wire/move/rotate/delete)
+    └── studio.js     # 3D Design Studio engine (transform tools, snap, 3D wiring)
 ```
 
 ## 🛠 Tech
@@ -195,6 +213,7 @@ Logic is verifiable headlessly:
 ```bash
 node --check js/app.js && node --check js/models.js && node --check js/parts.js
 node --check js/assets.js && node --check js/simulator.js && node --check js/workbench.js
+node --check js/studio.js
 ```
 
 The simulator is importable in Node (`import { simulate } from './js/simulator.js'`) — feed it `{id, type, x, y, rot, extra}` components and `{a, b}` wires to verify shorts, polarity, and gear-mesh logic headlessly.

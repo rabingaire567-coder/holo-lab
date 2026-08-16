@@ -31,8 +31,9 @@
     <div class="tb-group" id="mode-tabs">
       <button class="tb-btn active" data-mode="viewer">◉ HOLO VIEWER</button>
       <button class="tb-btn" data-mode="creator">✧ CREATOR LAB</button>
+      <button class="tb-btn" data-mode="studio">✦ 3D DESIGN STUDIO</button>
     </div>
-    <div class="tb-group creator-only" id="cat-tabs">
+    <div class="tb-group build-only" id="cat-tabs">
       <button class="tb-btn active" data-cat="electronics">⚡ ELECTRONICS</button>
       <button class="tb-btn" data-cat="mechanical">⚙ MECHANICAL</button>
     </div>
@@ -43,7 +44,12 @@
       <button class="tb-btn" data-tool="rotate">ROTATE</button>
       <button class="tb-btn" data-tool="delete">DELETE</button>
     </div>
-    <div class="tb-group creator-only" id="action-btns">
+    <div class="tb-group studio-only" id="snap-tabs">
+      <button class="tb-btn active" id="btn-snap">SNAP ON</button>
+      <button class="tb-btn active" id="btn-snap1">1.0</button>
+      <button class="tb-btn" id="btn-snap05">0.5</button>
+    </div>
+    <div class="tb-group build-only" id="action-btns">
       <button class="tb-btn accent" id="btn-simulate">▶ SIMULATE</button>
       <button class="tb-btn" id="btn-example">EXAMPLE</button>
       <button class="tb-btn" id="btn-clear">CLEAR</button>
@@ -60,11 +66,28 @@
       <div id="quick-actions" class="quick-actions"></div>
       <svg id="workbench" class="workbench" hidden></svg>
       <div id="lab-results" class="lab-results" hidden></div>
+      <div id="studio-rail" class="studio-rail studio-only">
+        <button class="st-btn active" data-studio-tool="select" title="Select — orbit: drag with MIDDLE mouse">SELECT</button>
+        <button class="st-btn" data-studio-tool="place" title="Place selected asset on the grid">PLACE</button>
+        <button class="st-btn" data-studio-tool="move" title="Drag to move (snap on)">MOVE</button>
+        <button class="st-btn" data-studio-tool="rotate" title="Drag to rotate (15° snap)">ROTATE</button>
+        <button class="st-btn" data-studio-tool="scale" title="Drag to scale (0.1 snap)">SCALE</button>
+        <button class="st-btn" data-studio-tool="wire" title="Click pin A then pin B">WIRE</button>
+        <button class="st-btn danger" data-studio-tool="delete" title="Click an object to delete">DELETE</button>
+        <div class="st-rule"></div>
+        <button class="st-btn" id="btn-st-desc" title="Show the selected object's documentation">INFO</button>
+      </div>
+      <div id="studio-hint" class="studio-hint studio-only">SELECT — left-click an object · orbit with MIDDLE mouse · scroll to zoom</div>
     </section>
 
     <aside class="panel" id="parts-panel">
       <div class="panel-header">
-        <span>◈ COMPONENT REGISTRY</span>
+        <span id="panel-title">◈ COMPONENT REGISTRY</span>
+        <div id="panel-tabs" class="panel-tabs" hidden>
+          <button class="pt-btn active" data-ptab="assets">ASSETS</button>
+          <button class="pt-btn" data-ptab="outliner">OUTLINER</button>
+          <button class="pt-btn" data-ptab="props">PROPS</button>
+        </div>
         <span id="panel-count"></span>
       </div>
       <div id="part-list" class="part-list"></div>
